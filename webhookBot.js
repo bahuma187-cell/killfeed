@@ -1,6 +1,8 @@
-// webhookBot.js (Nitrado Application version)
+// webhookBot.js (Render ready with full logging)
 const express = require("express");
 const { Client, GatewayIntentBits } = require("discord.js");
+
+// Config from environment variables (Render)
 const config = {
     discordBotToken: process.env.DISCORD_TOKEN,
     channelId: process.env.CHANNEL_ID,
@@ -20,6 +22,8 @@ discord.once("clientReady", () => {
 
 // Webhook endpoint for Nitrado Application
 app.post("/killfeed", async (req, res) => {
+    console.log("Received Nitrado event:", req.body); // Log everything for debugging
+
     // Verify App Secret from Authorization header
     const authHeader = req.headers["authorization"];
     if (!authHeader || authHeader !== config.webhookSecret) {
@@ -28,7 +32,6 @@ app.post("/killfeed", async (req, res) => {
     }
 
     const event = req.body;
-    console.log("Incoming Nitrado Application event:", event);
 
     try {
         const channel = await discord.channels.fetch(config.channelId);
@@ -39,7 +42,11 @@ app.post("/killfeed", async (req, res) => {
         }
         // Handle death events
         else if (event.type === "death") {
-            channel.send(`💀 **${event.victim}** died`);
+            if (event.cause === "suicide") {
+                channel.send(`💀 **${event.victim}** committed suicide`);
+            } else {
+                channel.send(`💀 **${event.victim}** died`);
+            }
         }
         // Other events
         else {
@@ -53,7 +60,7 @@ app.post("/killfeed", async (req, res) => {
     }
 });
 
-// Start server
+// Render-compatible port
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
