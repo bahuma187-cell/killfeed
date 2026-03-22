@@ -1,12 +1,15 @@
 {
   "name": "killfeed-bot",
   "version": "1.0.0",
+  "description": "PS4 DayZ Killfeed bot using FTP .ADM logs",
   "main": "webhookBot.js",
   "scripts": {
     "start": "node webhookBot.js"
   },
   "dependencies": {
+    "basic-ftp": "^4.5.0",
+    "discord.js": "^14.14.0",
     "express": "^4.18.2",
-    "discord.js": "^14.14.1"
+    "dotenv": "^16.1.4"
   }
 }
