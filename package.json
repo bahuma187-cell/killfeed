@@ -1,18 +1,12 @@
 {
-  "name": "killfeed-poging",
+  "name": "killfeed-bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "main": "webhookBot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node webhookBot.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "crypto": "^1.0.1",
-    "discord.js": "^14.25.1",
-    "express": "^5.2.1"
+    "express": "^4.18.2",
+    "discord.js": "^14.14.1"
   }
 }
