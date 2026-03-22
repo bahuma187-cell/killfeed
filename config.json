@@ -1,0 +1,9 @@
+{
+  "discordBotToken": "process.env.DISCORD_TOKEN",
+  "channelId": "1485057685773750484",
+  "webhookSecret": "L_SlBvRgSH9w4ykAb9dzGM7xwXKnJJHa1U3jJ2PEvpDOpzWqQK6i4clNiCzZtzLC",
+  "FTPHOST": "ms2396.gamedata.io",
+  "FTPUSER": "ni5631858_3",
+  "FTPPW": "CpCWsm9s",
+  "FTPPORT": 21
+}
