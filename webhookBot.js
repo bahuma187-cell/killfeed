@@ -1,4 +1,4 @@
-// webhookBot.js - FTP .ADM Killfeed Bot (Discord.js v14) with 3-min delayed player count
+// webhookBot.js - FTP .ADM Killfeed Bot (Discord.js v14) with cleaned ADM debug
 require("dotenv").config();
 const express = require("express");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
@@ -9,7 +9,6 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Config
 const config = {
     discordBotToken: process.env.DISCORD_TOKEN,
     channelId: process.env.CHANNEL_ID,
@@ -19,34 +18,28 @@ const config = {
     FTPPORT: process.env.FTP_PORT || 21
 };
 
-// Local images
 const images = {
     pvp: "attachment://pvp.png",
     suicide: "attachment://suicide.png",
     zombie: "attachment://zombie.png",
     fall: "attachment://fall.png",
-    outhos: "attachment://outhos.png"
+    outhos: "attachment://outhos.png",
+    landmine: "attachment://landmine.png"
 };
 
-// Discord bot setup
 const discord = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 discord.login(config.discordBotToken);
 
 discord.once("ready", async () => {
     console.log(`Discord bot logged in as ${discord.user.tag}`);
-
-    // Wait 3 minutes before sending first player count
-    setTimeout(async () => {
-        await sendPlayerCount();
-    }, 3 * 60 * 1000); // 180000 ms
+    setTimeout(async () => { await sendPlayerCount(); }, 3 * 60 * 1000);
 });
 
-// ---- ADM Parsing ---- //
-const sentLines = new Set();
+// ---- Deduplication per category ----
 const sentDeaths = new Set();
 const sentOuthos = new Set();
+const sentPvP = new Set();
 
-// ---- Fetch & parse ADM files ---- //
 async function fetchAndParseADM() {
     const client = new ftp.Client();
     client.ftp.verbose = false;
@@ -60,11 +53,17 @@ async function fetchAndParseADM() {
         });
 
         await client.cd("dayzps/config");
+
+        // --- Log only the ADM files the bot will process ---
         const files = await client.list();
-        const admFiles = files.filter(f => f.name.endsWith(".ADM"));
+        const admFiles = files.filter(f => f.name.includes("DayZServer_PS4_x64") && f.name.endsWith(".ADM"));
+        console.log("📝 ADM files found for processing:");
+        admFiles.forEach(f => console.log(`* ${f.name}`));
+
         if (!admFiles.length) return;
 
-        admFiles.sort((a, b) => new Date(a.modifiedAt) - new Date(b.modifiedAt));
+        // Sort ADM files by filename (chronological)
+        admFiles.sort((a, b) => a.name.localeCompare(b.name));
 
         const channel = await discord.channels.fetch(config.channelId);
 
@@ -90,17 +89,15 @@ async function fetchAndParseADM() {
             fileLines.sort((a, b) => a.timestamp - b.timestamp);
 
             for (const { line } of fileLines) {
-                if (sentLines.has(line)) continue;
-                sentLines.add(line);
-
                 // ---- PvP kills ----
                 const killMatch = line.match(/Player "(.*?)".*killed by Player "(.*?)".*with (.*?) from ([\d\.]+) meters/);
-                if (killMatch) {
-                    const [ , victim, killer, weapon, distanceRaw ] = killMatch;
+                if (killMatch && !sentPvP.has(line)) {
+                    sentPvP.add(line);
+                    const [, victim, killer, weapon, distanceRaw] = killMatch;
                     const distance = parseFloat(distanceRaw).toFixed(1);
 
                     const embed = new EmbedBuilder()
-                        .setColor("#1A0000") // extra dark red
+                        .setColor("#1A0000")
                         .setTitle("The Hills Kill Feed Notification")
                         .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n⊕ **${killer}** killed **${victim}** with **${weapon}** from **${distance}m**`)
                         .setThumbnail(images.pvp)
@@ -113,73 +110,67 @@ async function fetchAndParseADM() {
 
                 // ---- Zombie kills ----
                 const zombieMatch = line.match(/Player "(.*?)".*killed by ZmbM_(\w+)/);
-                if (zombieMatch) {
-                    const [ , victim, zombieType ] = zombieMatch;
-                    if (!sentDeaths.has(line)) {
-                        sentDeaths.add(line);
+                if (zombieMatch && !sentDeaths.has(line)) {
+                    sentDeaths.add(line);
+                    const [, victim, zombieType] = zombieMatch;
 
-                        const embed = new EmbedBuilder()
-                            .setColor("#FF0000")
-                            .setTitle("The Hills Kill Feed Notification")
-                            .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n**${victim}** killed by infected (**${zombieType}**)`)
-                            .setThumbnail(images.zombie)
-                            .setFooter({ text: "DayZ Console Feed By Bahuma187" })
-                            .setTimestamp();
+                    const embed = new EmbedBuilder()
+                        .setColor("#FF0000")
+                        .setTitle("The Hills Kill Feed Notification")
+                        .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n**${victim}** killed by infected (**${zombieType}**)`)
+                        .setThumbnail(images.zombie)
+                        .setFooter({ text: "DayZ Console Feed By Bahuma187" })
+                        .setTimestamp();
 
-                        await channel.send({ embeds: [embed], files: ["./images/zombie.png"] });
-                    }
+                    await channel.send({ embeds: [embed], files: ["./images/zombie.png"] });
                     continue;
                 }
 
                 // ---- Suicide ----
                 const suicideMatch = line.match(/Player "(.*?)" \(DEAD\).*committed suicide/);
-                if (suicideMatch) {
+                if (suicideMatch && !sentDeaths.has(line)) {
+                    sentDeaths.add(line);
                     const victim = suicideMatch[1];
-                    if (!sentDeaths.has(line)) {
-                        sentDeaths.add(line);
 
-                        const embed = new EmbedBuilder()
-                            .setColor("#FF0000")
-                            .setTitle("The Hills Kill Feed Notification")
-                            .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n💀 **${victim}** committed suicide`)
-                            .setThumbnail(images.suicide)
-                            .setFooter({ text: "DayZ Console Feed By Bahuma187" })
-                            .setTimestamp();
+                    const embed = new EmbedBuilder()
+                        .setColor("#FF0000")
+                        .setTitle("The Hills Kill Feed Notification")
+                        .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n💀 **${victim}** committed suicide`)
+                        .setThumbnail(images.suicide)
+                        .setFooter({ text: "DayZ Console Feed By Bahuma187" })
+                        .setTimestamp();
 
-                        await channel.send({ embeds: [embed], files: ["./images/suicide.png"] });
-                    }
+                    await channel.send({ embeds: [embed], files: ["./images/suicide.png"] });
                     continue;
                 }
 
                 // ---- Fall Damage ----
                 const fallMatch = line.match(/Player "(.*?)" \(DEAD\).*hit by FallDamageHealth/);
-                if (fallMatch) {
+                if (fallMatch && !sentDeaths.has(line)) {
+                    sentDeaths.add(line);
                     const victim = fallMatch[1];
-                    if (!sentDeaths.has(line)) {
-                        sentDeaths.add(line);
 
-                        const embed = new EmbedBuilder()
-                            .setColor("#FF0000")
-                            .setTitle("The Hills Kill Feed Notification")
-                            .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n♿︎ **${victim}** tried to fly and fell to their death!`)
-                            .setThumbnail(images.fall)
-                            .setFooter({ text: "DayZ Console Feed By Bahuma187" })
-                            .setTimestamp();
+                    const embed = new EmbedBuilder()
+                        .setColor("#FF0000")
+                        .setTitle("The Hills Kill Feed Notification")
+                        .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n♿︎ **${victim}** tried to fly and fell to their death!`)
+                        .setThumbnail(images.fall)
+                        .setFooter({ text: "DayZ Console Feed By Bahuma187" })
+                        .setTimestamp();
 
-                        await channel.send({ embeds: [embed], files: ["./images/fall.png"] });
-                    }
+                    await channel.send({ embeds: [embed], files: ["./images/fall.png"] });
                     continue;
                 }
 
-                // ---- Outhos Portal Teleport ----
+                // ---- Outhos Portal ----
                 const outhosMatch = line.match(/Player "(.*?)".*was teleported from: <([\d\.]+)/);
-                if (outhosMatch) {
+                if (outhosMatch && !sentOuthos.has(line)) {
                     const xCoord = parseFloat(outhosMatch[2]);
-                    if (xCoord >= 3690 && xCoord <= 3698 && !sentOuthos.has(line)) {
+                    if (xCoord >= 1985 && xCoord <= 1989) {
                         sentOuthos.add(line);
 
                         const embed = new EmbedBuilder()
-                            .setColor("#00BFFF") // Bright blue
+                            .setColor("#00BFFF")
                             .setTitle("The Hills Kill Feed Notification")
                             .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n🌌 A soul has left our world!`)
                             .setThumbnail(images.outhos)
@@ -188,6 +179,24 @@ async function fetchAndParseADM() {
 
                         await channel.send({ embeds: [embed], files: ["./images/outhos.png"] });
                     }
+                    continue;
+                }
+
+                // ---- Landmine / Explosion ----
+                const landmineMatch = line.match(/Player "(.*?)".*hit by explosion \(LandMineExplosion\)/);
+                if (landmineMatch && !sentDeaths.has(line)) {
+                    sentDeaths.add(line);
+                    const victim = landmineMatch[1];
+
+                    const embed = new EmbedBuilder()
+                        .setColor("#FFA500")
+                        .setTitle("The Hills Kill Feed Notification")
+                        .setDescription(`💥 **${victim}** was hit by an **Explosion!**`)
+                        .setThumbnail(images.landmine)
+                        .setFooter({ text: "DayZ Console Feed By Bahuma187" })
+                        .setTimestamp();
+
+                    await channel.send({ embeds: [embed], files: ["./images/landmine.png"] });
                     continue;
                 }
             }
@@ -202,10 +211,9 @@ async function fetchAndParseADM() {
     }
 }
 
-// Poll every 5 seconds for ADM updates
 setInterval(fetchAndParseADM, 5000);
 
-// ---- Player Count Notification (every 15 minutes) ----
+// ---- Player Count Notification ----
 async function sendPlayerCount() {
     const client = new ftp.Client();
     client.ftp.verbose = false;
@@ -220,11 +228,11 @@ async function sendPlayerCount() {
 
         await client.cd("dayzps/config");
         const files = await client.list();
-        const admFiles = files.filter(f => f.name.endsWith(".ADM"));
+        const admFiles = files.filter(f => f.name.includes("DayZServer_PS4_x64") && f.name.endsWith(".ADM"));
         if (!admFiles.length) return;
 
-        admFiles.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
-        const latestADM = admFiles[0];
+        admFiles.sort((a, b) => a.name.localeCompare(b.name));
+        const latestADM = admFiles[admFiles.length - 1];
         const localPath = path.join(__dirname, latestADM.name);
         await client.downloadTo(localPath, latestADM.name);
 
@@ -247,7 +255,7 @@ async function sendPlayerCount() {
         const channel = await discord.channels.fetch(config.channelId);
 
         const embed = new EmbedBuilder()
-            .setColor("#FFD700") // gold
+            .setColor("#FFD700")
             .setTitle("Server Announcement")
             .setDescription(`🟢 !! METRO MAP V3.5 Official - 0001\n👥 Current online players: **${playerCount}**`)
             .setFooter({ text: "DayZ Console Feed By Bahuma187" })
@@ -262,9 +270,7 @@ async function sendPlayerCount() {
     }
 }
 
-// Poll every 15 minutes for player count
-setInterval(sendPlayerCount, 15 * 60 * 1000);
+setInterval(sendPlayerCount, 30 * 60 * 1000);
 
-// ---- Start server ----
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Webhook server running on port ${PORT}`));
