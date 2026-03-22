@@ -1,7 +1,7 @@
 {
   "discordBotToken": "process.env.DISCORD_TOKEN",
   "channelId": "1485057685773750484",
-  "webhookSecret": "L_SlBvRgSH9w4ykAb9dzGM7xwXKnJJHa1U3jJ2PEvpDOpzWqQK6i4clNiCzZtzLC",
+  "webhookSecret": "process.env.WEBHOOK_SECRET",
   "FTPHOST": "process.env.FTP_HOST",
   "FTPUSER": "process.env.FTP_USER",
   "FTPPW": "process.env.FTP_PASS",
